@@ -67,7 +67,8 @@ namespace SearchEngine
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
 #if DEBUG
-            string imageFilePath = @"D:\Workspace\AnswerApp\screenshot.png";
+            gameCode = 1;
+            string imageFilePath = @"D:\Workspace\AnswerApp\screenshot17-01.png";
 #else
             gameCode = int.Parse(args[1]);
             string imageFilePath = args[0];
@@ -107,6 +108,12 @@ namespace SearchEngine
             {
                 double a = SearchCounter(question + " " + option[i]);
                 double b = SearchCounter(option[i]);
+                
+                if (b < 1)
+                {
+                    b = 100000000000000;
+                }
+
                 rate[i] = a / b;
                 Console.WriteLine("Rating for choice {0}: {1} / {2} = {3}", i + 1, a, b, rate[i]);
             }
@@ -228,6 +235,11 @@ namespace SearchEngine
                 //Console.WriteLine("\nResult count:\n");
                 int start = result.jsonResult.IndexOf("totalEstimatedMatches") + 24;
                 int end = result.jsonResult.IndexOf("value") - 3;
+                if (end < 0) // no result
+                {
+                    return 0;
+                }
+
                 int count = int.Parse(result.jsonResult.Substring(start, end - start));
                 //Console.WriteLine(count);
                 //Console.WriteLine(JsonPrettyPrint(result.jsonResult));
