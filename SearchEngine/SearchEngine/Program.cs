@@ -1,4 +1,4 @@
-﻿// #define DEBUG
+﻿//#define DEBUG
 
 using System;
 using System.Drawing;
@@ -32,17 +32,22 @@ namespace SearchEngine
         /// <summary>
         /// The number of choices in each question
         /// </summary>
-        const int choices = 3;
+        static int choices = 3;
+
+        /// <summary>
+        /// Flood fill coex
+        /// </summary>f
+        const int coex = 5;
 
         // The question background pixel for floodfill
-        static int[] startX = new int[] { 200, 200 };
-        static int[] startY = new int[] { 200, 200 };
+        static int[] startX = new int[] { 200, 200 ,200};
+        static int[] startY = new int[] { 200, 200 ,200};
         
         // Cut head for no need info
-        static int[] topChop = new int[] { 200, 200 };
-        static int[] bottomChop = new int[] { 0, 100 };
+        static int[] topChop = new int[] { 200, 200, 200 };
+        static int[] bottomChop = new int[] { 0, 100, 0 };
 
-        static int gameCode = 0; // Which game? 0 - CDDH 1 - ZSCR 2 - BWYX
+        static int gameCode = 0; // Which game? 0 - CDDH 1 - ZSCR 2 - BWYX 3 - Zhihu
 
         // Used to return search results including relevant headers
         struct SearchResult
@@ -67,58 +72,170 @@ namespace SearchEngine
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
 #if DEBUG
-            gameCode = 1;
-            string imageFilePath = @"D:\Workspace\AnswerApp\screenshot17-01.png";
+            gameCode = 3;
+            string imageFilePath = @"D:\Workspace\AnswerApp\screenshot20-13.png";
 #else
             gameCode = int.Parse(args[1]);
             string imageFilePath = args[0];
 #endif
-            string questionPic = SplitPic(imageFilePath);
-
-            // Execute the REST API call.
-            string jsonString = MakeOCRRequest(questionPic).Result;
-            JObject jo = (JObject)JsonConvert.DeserializeObject(jsonString);
-            JArray text = jo["regions"][0]["lines"] as JArray;
-
+            
             string question = string.Empty;
-            string[] option = new string[choices];
-            int lines = text.Count;
-            for (int i = 0; i < lines - choices; i++)
+            string[] option = new string[10];
+
+            if (gameCode == 3) // zhihu
             {
-                question += words2string(text[i]);
+                choices = 4;
+                Bitmap pic = (Bitmap)Image.FromFile(imageFilePath);
+                var questionPic = pic.Clone(
+                new Rectangle(50, 550, 950, 300),
+                pic.PixelFormat
+                );
+                string questionPath = workspace + "QuestionSnap" + DateTime.Now.ToString().Replace(':', '-').Replace('/', '-') + ".png";
+                questionPic.Save(questionPath, pic.RawFormat);
+                question = getAllString(questionPath);
+                
+                var temp = pic.Clone(
+                new Rectangle(200, 950, 700, 175),
+                pic.PixelFormat
+                );
+                string tempPic = workspace + "QuestionSnap" + DateTime.Now.ToString().Replace(':', '-').Replace('/', '-') + ".png";
+                temp.Save(tempPic, pic.RawFormat);
+                option[0] = getAllString(tempPic);
+
+                temp = pic.Clone(
+                new Rectangle(200, 1150, 700, 175),
+                pic.PixelFormat
+                );
+                tempPic = workspace + "QuestionSnap" + DateTime.Now.ToString().Replace(':', '-').Replace('/', '-') + ".png";
+                temp.Save(tempPic, pic.RawFormat);
+                option[1] = getAllString(tempPic);
+
+                temp = pic.Clone(
+                new Rectangle(200, 1350, 700, 175),
+                pic.PixelFormat
+                );
+                tempPic = workspace + "QuestionSnap" + DateTime.Now.ToString().Replace(':', '-').Replace('/', '-') + ".png";
+                temp.Save(tempPic, pic.RawFormat);
+                option[2] = getAllString(tempPic);
+
+                temp = pic.Clone(
+                new Rectangle(200, 1550, 700, 175),
+                pic.PixelFormat
+                );
+                tempPic = workspace + "QuestionSnap" + DateTime.Now.ToString().Replace(':', '-').Replace('/', '-') + ".png";
+                temp.Save(tempPic, pic.RawFormat);
+                option[3] = getAllString(tempPic);
+            }
+            else
+            {
+                string questionPic = SplitPic(imageFilePath);
+                // Execute the REST API call.
+                Console.WriteLine("OCR ...");
+                string jsonString = MakeOCRRequest(questionPic).Result;
+                Console.WriteLine("OCR finished");
+                JObject jo = (JObject)JsonConvert.DeserializeObject(jsonString);
+                JArray text = jo["regions"][0]["lines"] as JArray;
+                
+                int lines = text.Count;
+                for (int i = 0; i < lines - choices; i++)
+                {
+                    question += words2string(text[i]);
+                }
+
+                while (question[0] >= '0' && question[0] <= '9')
+                {
+                    question = question.Substring(1, question.Length - 1);
+                }
+
+
+                for (int i = 0; i < choices; i++)
+                {
+                    option[i] = words2string(text[lines - choices + i]);
+                }
             }
 
-            while (question[0] >= '0' && question[0] <= '9')
-            {
-                question = question.Substring(1, question.Length - 1);
-            }
-
-            for (int i = 0; i < choices; i++)
-            {
-                option[i] = words2string(text[lines - choices + i]);
-            }
             Console.WriteLine("Question: {0}", question);
             Console.WriteLine("A: {0}", option[0]);
             Console.WriteLine("B: {0}", option[1]);
             Console.WriteLine("C: {0}", option[2]);
+            if (gameCode == 3) Console.WriteLine("D: {0}", option[3]);
 
+            bool noflag = false;
+            if (question.Contains("不"))
+            {
+                noflag = true;
+                question = question.Replace("不", "");
+                Console.WriteLine("不字反转启动");
+            }
+
+            //string keyword = getKeyword(question);
+            //Console.WriteLine("Got keyword {0}", keyword);
             double[] rate = new double[choices];
 
             for (int i = 0; i < choices; i++)
             {
-                double a = SearchCounter(question + " " + option[i]);
+                double a = SearchCounter(question + " + " + option[i]);
                 double b = SearchCounter(option[i]);
                 
                 if (b < 1)
                 {
-                    b = 100000000000000;
+                    b = 1000000000000;
                 }
 
+                //b = Math.Log(b, 1.01);
                 rate[i] = a / b;
                 Console.WriteLine("Rating for choice {0}: {1} / {2} = {3}", i + 1, a, b, rate[i]);
             }
 
-            return GetBiggestIndex(rate);
+            return noflag ? GetSmallestIndex(rate) : GetBiggestIndex(rate);
+        }
+
+        static string getAllString(string path)
+        {
+            string res = "";
+            Console.WriteLine("OCR ...");
+            string jsonString = MakeOCRRequest(path).Result;
+            Console.WriteLine("OCR finished");
+            JObject jo = (JObject)JsonConvert.DeserializeObject(jsonString);
+            JArray text = jo["regions"][0]["lines"] as JArray;
+
+            int lines = text.Count;
+            for (int i = 0; i < lines; i++)
+            {
+                res += words2string(text[i]);
+            }
+
+            return res;
+        }
+
+        static string getKeyword(string question)
+        {
+            int head = 0;
+            int tail = 0;
+            for (int i = 0; i < question.Length; i++)
+            {
+                if (isTheSpecial(question[i]))
+                {
+                    head = i;
+                    break;
+                }
+            }
+
+            for (int i = question.Length - 1; i > 0; i--)
+            {
+                if (isTheSpecial(question[i]))
+                {
+                    tail = i;
+                    break;
+                }
+            }
+
+            return question.Substring(head + 1, tail - head - 1);
+        }
+
+        static bool isTheSpecial(char x)
+        {
+            return x == '\"' || x == '\'' || x == '‘' || x == '“' || x == '”' || x == '’';
         }
 
         static int GetBiggestIndex(double[] rate)
@@ -136,6 +253,23 @@ namespace SearchEngine
 
             return res;
         }
+
+        static int GetSmallestIndex(double[] rate)
+        {
+            double smallest = 1000000000000;
+            int res = 0;
+            for (int i = 0; i < rate.Length; i++)
+            {
+                if (rate[i] < smallest)
+                {
+                    smallest = rate[i];
+                    res = i;
+                }
+            }
+
+            return res;
+        }
+
 
         static string words2string(JToken text)
         {
@@ -184,8 +318,8 @@ namespace SearchEngine
                 if (nowpix.y < questionTop) questionTop = nowpix.y;
                 for (int i = 0; i < 4; i++)
                 {
-                    var nx = nowpix.x + dx[i];
-                    var ny = nowpix.y + dy[i];
+                    var nx = nowpix.x + dx[i] * coex;
+                    var ny = nowpix.y + dy[i] * coex;
                     if (!(nx >= 0 && nx < pic.Width && ny >= 0 && ny < pic.Height)) continue;
                     var nextpix = new pixel(nx, ny);
                     if (!visited.Contains(trans(nextpix.x, nextpix.y)) 
@@ -207,6 +341,7 @@ namespace SearchEngine
 
             string questionPath = workspace + "QuestionSnap" + DateTime.Now.ToString().Replace(':', '-').Replace('/', '-') + ".png";
             questionPic.Save(questionPath, pic.RawFormat);
+            Console.WriteLine("Spilted");
             return questionPath;
         }
 
@@ -315,8 +450,16 @@ namespace SearchEngine
             // Request headers.
             client.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", OCRAccessKey);
 
+            string requestParameters;
             // Request parameters.
-            string requestParameters = "language=unk&detectOrientation=true";
+            if (gameCode == 3)
+            {
+                requestParameters = "language=unk&detectOrientation=false";
+            }
+            else
+            {
+                requestParameters = "language=unk&detectOrientation=true";
+            }
 
             // Assemble the URI for the REST API Call.
             string uri = uriBase + "?" + requestParameters;

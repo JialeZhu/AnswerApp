@@ -7,6 +7,7 @@ cd $workpath
 
 Write-Host "Ready Go!"
 
+$startTime = Get-Date
 # Capture screenshot    
 Write-Host "Captrue......"
 sh cap.sh
@@ -17,5 +18,7 @@ $filename = "screenshot$timeStamp.png"
 copy screenshot.png $filename
 D:\Workspace\AnswerApp\SearchEngine\SearchEngine\bin\Release\SearchEngine.exe "$workpath\$filename" "$gameCode"
 Write-Host $LASTEXITCODE
+$endTime = Get-Date
 # tap
-adb shell input swipe 500 1700 500 1700 10
+#adb shell input swipe 500 1700 500 1700 10
+Write-Host -ForegroundColor Red ('Total Runtime: ' + ($endTime - $startTime).TotalSeconds)
