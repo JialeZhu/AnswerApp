@@ -1,4 +1,6 @@
-﻿using System;
+﻿// #define DEBUG
+
+using System;
 using System.Drawing;
 using System.Text;
 using System.Net;
@@ -6,6 +8,10 @@ using System.IO;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Drawing.Imaging;
+using Newtonsoft.Json;
+using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 
 namespace SearchEngine
 {
@@ -17,11 +23,26 @@ namespace SearchEngine
         // **********************************************
 
         // Replace the accessKey string value with your valid access key.
-        const string BingSearchAccessKey = "9c64c10495834f44a1773cd591bab738";
+        const string BingSearchAccessKey = "12024f47def94ec4a8e0d818376751c4";
 
-        const string OCRAccessKey = "c214a5cca92446d993d80ba493e2e64a";
+        const string OCRAccessKey = "c746bd5de72e4bac883fd54d6195229e";
 
         const string workspace = @"D:\Workspace\AnswerApp\";
+
+        /// <summary>
+        /// The number of choices in each question
+        /// </summary>
+        const int choices = 3;
+
+        // The question background pixel for floodfill
+        static int[] startX = new int[] { 200, 200 };
+        static int[] startY = new int[] { 200, 200 };
+        
+        // Cut head for no need info
+        static int[] topChop = new int[] { 200, 200 };
+        static int[] bottomChop = new int[] { 0, 100 };
+
+        static int gameCode = 0; // Which game? 0 - CDDH 1 - ZSCR 2 - BWYX
 
         // Used to return search results including relevant headers
         struct SearchResult
@@ -30,42 +51,185 @@ namespace SearchEngine
             public Dictionary<String, String> relevantHeaders;
         }
 
-        static void Main()
+        struct pixel
+        {
+            public int x;
+            public int y;
+
+            public pixel(int x, int y) : this()
+            {
+                this.x = x;
+                this.y = y;
+            }
+        }
+
+        static int Main(string[] args)
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
-
-            // Get the path and filename to process from the user.
-            Console.WriteLine("Optical Character Recognition:");
-            Console.Write("Enter the path to an image with text you wish to read: ");
-            string imageFilePath = Console.ReadLine();
+#if DEBUG
+            string imageFilePath = @"D:\Workspace\AnswerApp\screenshot.png";
+#else
+            gameCode = int.Parse(args[1]);
+            string imageFilePath = args[0];
+#endif
+            string questionPic = SplitPic(imageFilePath);
 
             // Execute the REST API call.
-            MakeOCRRequest(imageFilePath);
+            string jsonString = MakeOCRRequest(questionPic).Result;
+            JObject jo = (JObject)JsonConvert.DeserializeObject(jsonString);
+            JArray text = jo["regions"][0]["lines"] as JArray;
 
-            Console.WriteLine("\nPlease wait a moment for the results to appear. Then, press Enter to exit...\n");
-            Console.ReadLine();
+            string question = string.Empty;
+            string[] option = new string[choices];
+            int lines = text.Count;
+            for (int i = 0; i < lines - choices; i++)
+            {
+                question += words2string(text[i]);
+            }
 
-            Console.Write("\nPress Enter to exit ");
-            Console.ReadLine();
+            while (question[0] >= '0' && question[0] <= '9')
+            {
+                question = question.Substring(1, question.Length - 1);
+            }
+
+            for (int i = 0; i < choices; i++)
+            {
+                option[i] = words2string(text[lines - choices + i]);
+            }
+            Console.WriteLine("Question: {0}", question);
+            Console.WriteLine("A: {0}", option[0]);
+            Console.WriteLine("B: {0}", option[1]);
+            Console.WriteLine("C: {0}", option[2]);
+
+            double[] rate = new double[choices];
+
+            for (int i = 0; i < choices; i++)
+            {
+                double a = SearchCounter(question + " " + option[i]);
+                double b = SearchCounter(option[i]);
+                rate[i] = a / b;
+                Console.WriteLine("Rating for choice {0}: {1} / {2} = {3}", i + 1, a, b, rate[i]);
+            }
+
+            return GetBiggestIndex(rate);
         }
 
-        static void SplitPic(string picname)
+        static int GetBiggestIndex(double[] rate)
         {
-            Bitmap pic = (Bitmap)Image.FromFile(picname);
+            double biggest = 0;
+            int res = 0;
+            for (int i = 0; i < rate.Length; i++)
+            {
+                if (rate[i] > biggest)
+                {
+                    biggest = rate[i];
+                    res = i;
+                }
+            }
+
+            return res;
         }
 
-        static int SearchCounter(string searchTerm)
+        static string words2string(JToken text)
+        {
+            string res = "";
+            JArray words = text["words"] as JArray;
+            foreach (var token in words)
+            {
+                res += token["text"].ToString();
+            }
+
+            return res;
+        }
+
+        /// <summary>
+        /// Spilt the question part as seperate picture
+        /// </summary>
+        /// <param name="picname">The original full screenshot</param>
+        /// <returns>The question part screen</returns>
+        static string SplitPic(string picname)
+        {
+            Console.WriteLine("Going to process picture: {0}", picname);
+            Bitmap pic = (Bitmap)Image.FromFile(picname);
+
+            int backgroundX = startX[gameCode];
+            int backgroundY = startY[gameCode];
+
+            int questionTop = 2000;
+            int questionBottom = 0;
+            int questionLeft = 2000;
+            int questionRight = 0;
+            
+            int[] dx = new int[] { 1, 0, -1, 0 };
+            int[] dy = new int[] { 0, 1, 0, -1 };
+            var baseColor = pic.GetPixel(backgroundX, backgroundY);
+            Queue<pixel> q = new Queue<pixel>();
+            HashSet<int> visited = new HashSet<int>();
+            q.Enqueue(new pixel(backgroundX, backgroundY));
+            visited.Add(trans(backgroundX, backgroundY));
+            
+            while (q.Count > 0)
+            {
+                var nowpix = q.Dequeue();
+                if (nowpix.x > questionRight) questionRight = nowpix.x;
+                if (nowpix.x < questionLeft) questionLeft = nowpix.x;
+                if (nowpix.y > questionBottom) questionBottom = nowpix.y;
+                if (nowpix.y < questionTop) questionTop = nowpix.y;
+                for (int i = 0; i < 4; i++)
+                {
+                    var nx = nowpix.x + dx[i];
+                    var ny = nowpix.y + dy[i];
+                    if (!(nx >= 0 && nx < pic.Width && ny >= 0 && ny < pic.Height)) continue;
+                    var nextpix = new pixel(nx, ny);
+                    if (!visited.Contains(trans(nextpix.x, nextpix.y)) 
+                        && distance(pic.GetPixel(nextpix.x, nextpix.y), baseColor) < 5)
+                    {
+                        visited.Add(trans(nextpix.x, nextpix.y));
+                        q.Enqueue(nextpix);
+                    }
+                }
+            }
+
+            questionTop += topChop[gameCode]; // chop more
+            questionBottom -= bottomChop[gameCode];
+
+            var questionPic = pic.Clone(
+                new Rectangle(questionLeft, questionTop, questionRight - questionLeft, questionBottom - questionTop),
+                pic.PixelFormat
+                );
+
+            string questionPath = workspace + "QuestionSnap" + DateTime.Now.ToString().Replace(':', '-').Replace('/', '-') + ".png";
+            questionPic.Save(questionPath, pic.RawFormat);
+            return questionPath;
+        }
+
+        static int distance(Color a, Color b)
+        {
+            return Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B);
+        }
+
+        static int trans(int x, int y)
+        {
+            return x * 10000 + y;
+        }
+
+        /// <summary>
+        /// Search term
+        /// </summary>
+        /// <param name="searchTerm">The term to search</param>
+        /// <returns>Result count, -1 if meet error</returns>
+        static double SearchCounter(string searchTerm)
         {
             if (BingSearchAccessKey.Length == 32)
             {
-                Console.WriteLine("Searching the Web for: " + searchTerm);
+                //Console.WriteLine("Searching the Web for: " + searchTerm);
                 SearchResult result = BingWebSearch(searchTerm);
 
-                Console.WriteLine("\nResult count:\n");
+                //Console.WriteLine("\nResult count:\n");
                 int start = result.jsonResult.IndexOf("totalEstimatedMatches") + 24;
                 int end = result.jsonResult.IndexOf("value") - 3;
                 int count = int.Parse(result.jsonResult.Substring(start, end - start));
-                Console.WriteLine(count);
+                //Console.WriteLine(count);
                 //Console.WriteLine(JsonPrettyPrint(result.jsonResult));
                 return count;
             }
@@ -88,7 +252,12 @@ namespace SearchEngine
             const string uriBase = "https://api.cognitive.microsoft.com/bing/v7.0/search";
 
             // Construct the URI of the search request
-            var uriQuery = uriBase + "?q=" + Uri.EscapeDataString(searchQuery);
+            var uriQuery = uriBase 
+                + "?q=" + Uri.EscapeDataString(searchQuery) 
+                + "&setLang=zh" 
+                + "&count=1"
+                + "&mkt=en-US"
+                + "&responseFilter=Webpages";
 
             // Perform the Web request and get the response
             WebRequest request = HttpWebRequest.Create(uriQuery);
@@ -117,7 +286,7 @@ namespace SearchEngine
         /// Gets the text visible in the specified image file by using the Computer Vision REST API.
         /// </summary>
         /// <param name="imageFilePath">The image file.</param>
-        static async void MakeOCRRequest(string imageFilePath)
+        static async Task<string> MakeOCRRequest(string imageFilePath)
         {
             // Replace or verify the region.
             //
@@ -127,7 +296,7 @@ namespace SearchEngine
             //
             // NOTE: Free trial subscription keys are generated in the westcentralus region, so if you are using
             // a free trial subscription key, you should not need to change this region.
-            const string uriBase = "https://westcentralus.api.cognitive.microsoft.com/vision/v1.0/ocr";
+            const string uriBase = "https://eastus.api.cognitive.microsoft.com/vision/v1.0/ocr";
 
             HttpClient client = new HttpClient();
 
@@ -157,9 +326,7 @@ namespace SearchEngine
                 // Get the JSON response.
                 string contentString = await response.Content.ReadAsStringAsync();
 
-                // Display the JSON response.
-                Console.WriteLine("\nResponse:\n");
-                Console.WriteLine(JsonPrettyPrint(contentString));
+                return contentString;
             }
         }
         
