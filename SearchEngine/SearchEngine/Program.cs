@@ -72,8 +72,8 @@ namespace SearchEngine
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
 #if DEBUG
-            gameCode = 3;
-            string imageFilePath = @"D:\Workspace\AnswerApp\screenshot20-13.png";
+            gameCode = 1;
+            string imageFilePath = @"D:\Workspace\AnswerApp\screenshot13-17.png";
 #else
             gameCode = int.Parse(args[1]);
             string imageFilePath = args[0];
@@ -137,16 +137,25 @@ namespace SearchEngine
                 JArray text = jo["regions"][0]["lines"] as JArray;
                 
                 int lines = text.Count;
-                for (int i = 0; i < lines - choices; i++)
+                string allText = "";
+                for (int i = 0; i < lines; i++)
                 {
-                    question += words2string(text[i]);
+                    allText += words2string(text[i]);
                 }
 
+                int questionMarkIndex = Math.Max(allText.IndexOf("？"), allText.IndexOf("?"));
+                question = allText.Substring(0, questionMarkIndex);
+                // cut off the question number
                 while (question[0] >= '0' && question[0] <= '9')
                 {
                     question = question.Substring(1, question.Length - 1);
                 }
 
+                // show search result
+                if (args.Length >= 3)
+                {
+                    SearchCounter(question, true);
+                }
 
                 for (int i = 0; i < choices; i++)
                 {
@@ -174,7 +183,7 @@ namespace SearchEngine
 
             for (int i = 0; i < choices; i++)
             {
-                double a = SearchCounter(question + " + " + option[i]);
+                double a = SearchCounter(question + " +" + "\"" + option[i] + "\"");
                 double b = SearchCounter(option[i]);
                 
                 if (b < 1)
@@ -187,7 +196,9 @@ namespace SearchEngine
                 Console.WriteLine("Rating for choice {0}: {1} / {2} = {3}", i + 1, a, b, rate[i]);
             }
 
-            return noflag ? GetSmallestIndex(rate) : GetBiggestIndex(rate);
+            int ans = noflag ? GetSmallestIndex(rate) : GetBiggestIndex(rate);
+            Console.WriteLine("推荐答案 {0}: {1}", Convert.ToChar('A' + ans), option[ans]);
+            return ans;
         }
 
         static string getAllString(string path)
@@ -290,7 +301,7 @@ namespace SearchEngine
         /// <returns>The question part screen</returns>
         static string SplitPic(string picname)
         {
-            Console.WriteLine("Going to process picture: {0}", picname);
+            Console.WriteLine("Going to process psicture: {0}", picname);
             Bitmap pic = (Bitmap)Image.FromFile(picname);
 
             int backgroundX = startX[gameCode];
@@ -360,8 +371,10 @@ namespace SearchEngine
         /// </summary>
         /// <param name="searchTerm">The term to search</param>
         /// <returns>Result count, -1 if meet error</returns>
-        static double SearchCounter(string searchTerm)
+        static double SearchCounter(string searchTerm, bool showRes = false)
         {
+            searchTerm = searchTerm.Replace("\"", "").Replace("·", "");
+
             if (BingSearchAccessKey.Length == 32)
             {
                 //Console.WriteLine("Searching the Web for: " + searchTerm);
@@ -377,7 +390,7 @@ namespace SearchEngine
 
                 int count = int.Parse(result.jsonResult.Substring(start, end - start));
                 //Console.WriteLine(count);
-                //Console.WriteLine(JsonPrettyPrint(result.jsonResult));
+                if (showRes) Console.WriteLine(JsonPrettyPrint(result.jsonResult));
                 return count;
             }
             else
@@ -402,8 +415,8 @@ namespace SearchEngine
             var uriQuery = uriBase 
                 + "?q=" + Uri.EscapeDataString(searchQuery) 
                 + "&setLang=zh" 
-                + "&count=1"
-                + "&mkt=en-US"
+                + "&count=3"
+                + "&mkt=zh-cn"
                 + "&responseFilter=Webpages";
 
             // Perform the Web request and get the response

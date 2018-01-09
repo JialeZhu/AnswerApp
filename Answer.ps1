@@ -16,7 +16,7 @@ $timeStamp = Get-Date
 $timeStamp = $timeStamp.ToShortTimeString().Replace(':','-')
 $filename = "screenshot$timeStamp.png"
 copy screenshot.png $filename
-D:\Workspace\AnswerApp\SearchEngine\SearchEngine\bin\Release\SearchEngine.exe "$workpath\$filename" "$gameCode"
+D:\Workspace\AnswerApp\SearchEngine\SearchEngine\bin\Release\SearchEngine.exe "$workpath\$filename" "$gameCode" "showSearch"
 Write-Host $LASTEXITCODE
 $endTime = Get-Date
 # tap
