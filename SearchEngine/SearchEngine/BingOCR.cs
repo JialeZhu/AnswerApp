@@ -18,7 +18,7 @@ namespace SearchEngine
         /// Gets the text visible in the specified image file by using the Computer Vision REST API.
         /// </summary>
         /// <param name="imageFilePath">The image file.</param>
-        public async Task<string> MakeOCRRequest(string imageFilePath)
+        public async Task<string> MakeOCRRequestAsync(string imageFilePath)
         {
             // Replace or verify the region.
             //

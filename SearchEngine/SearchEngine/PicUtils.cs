@@ -23,12 +23,12 @@ namespace SearchEngine
 
     class PicUtils
     {
-        public string getAllStringInPic(string path)
+        public async Task<string> getAllStringInPicAsync(string path)
         {
             string res = "";
             Console.WriteLine("OCR ...");
             var ocrTool = new BingOCR();
-            string jsonString = ocrTool.MakeOCRRequest(path).Result;
+            string jsonString = await ocrTool.MakeOCRRequestAsync(path);
             Console.WriteLine("OCR finished");
             JObject jo = (JObject)JsonConvert.DeserializeObject(jsonString);
             JArray text = jo["regions"][0]["lines"] as JArray;
